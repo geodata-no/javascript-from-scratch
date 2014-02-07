@@ -1,0 +1,228 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>Eiendomskart fra scratch</title>
+
+    <link rel="stylesheet" href="http://js.arcgis.com/3.8/js/dojo/dijit/themes/claro/claro.css">
+    <link rel="stylesheet" href="http://js.arcgis.com/3.8/js/esri/css/esri.css">
+    <link rel="stylesheet" href="http://developers.arcgis.com/javascript/samples/ags_createwebmapid/css/layout.css">
+
+
+    <script src="http://js.arcgis.com/3.8/"></script>
+    <script>
+        require([
+          "dojo/parser",
+          "dojo/ready",
+          "dijit/layout/BorderContainer",
+          "dijit/layout/ContentPane",
+          "dojo/dom",
+          "esri/map",
+
+          "dojo/on",
+          "dojo/_base/array",
+          "esri/layers/ArcGISDynamicMapServiceLayer",
+          "esri/layers/ArcGISTiledMapServiceLayer",
+          "esri/layers/FeatureLayer",
+          "esri/dijit/PopupTemplate",
+          "esri/layers/WMSLayer",
+          "esri/layers/WMSLayerInfo",
+          "esri/geometry/Extent",
+
+          "dojo/io-query",
+          "dojo/request/xhr",
+          "esri/config",
+          "esri/graphic",
+          "esri/InfoTemplate",
+          "dojo/_base/lang",
+
+          "esri/urlUtils",
+          "esri/arcgis/utils",
+          "esri/dijit/Legend",
+          "esri/dijit/Scalebar",
+          "dojo/domReady!"
+        ], function (
+          parser,
+          ready,
+          BorderContainer,
+          ContentPane,
+          dom,
+          Map,
+
+          on,
+          array,
+          ArcGISDynamicMapServiceLayer,
+          ArcGISTiledMapServiceLayer,
+          FeatureLayer,
+          PopupTemplate,
+          WMSLayer,
+          WMSLayerInfo,
+          Extent,
+
+          ioQuery,
+          xhr,
+          esriConfig,
+          Graphic,
+          InfoTemplate,
+          lang,
+
+          urlUtils,
+          arcgisUtils,
+          Legend,
+          Scalebar
+        ) {
+            ready(function () {
+
+                parser.parse();
+
+                var webMapId = null; //"d3134f6604944a8c87819b86333ddb86";
+                var i = window.location.search.indexOf("webmap=");
+                if (i >= 0) webMapId = window.location.search.substring(i + 7);
+
+                function initLegend(map, legendLayers) {
+                    //add the scalebar 
+                    var scalebar = new Scalebar({
+                        map: map,
+                        scalebarUnit: "english"
+                    });
+
+                    //add the legend. Note that we use the utility method getLegendLayers to get 
+                    //the layers to display in the legend from the createMap response.
+                    var legendDijit = new Legend({
+                        map: map,
+                        layerInfos: legendLayers
+                    }, "legend");
+                    legendDijit.startup();
+                }
+
+                if (webMapId) {
+                    arcgisUtils.createMap(webMapId, "map").then(function (response) {
+                        //update the app 
+                        dom.byId("title").innerHTML = response.itemInfo.item.title;
+                        dom.byId("subtitle").innerHTML = response.itemInfo.item.snippet;
+                        initLegend(response.map, arcgisUtils.getLegendLayers(response));
+                    });
+                }
+                else {
+                    dom.byId("title").innerHTML = "Eiendomskart";
+                    dom.byId("subtitle").innerHTML = "Eiendomskart med tjenester fra Geodata Online og www.geonorge.no";
+
+                    var token = "xxx"; // TODO: Go to https://tokens.geodataonline.no/arcgis/tokens/ and generate a token for this application.
+                    token = "?token=" + token;
+                    var map = new Map("map");
+                    var tiledLayer = new ArcGISTiledMapServiceLayer("https://services.geodataonline.no/arcgis/rest/services/Geocache_UTM33_EUREF89/GeocacheBasis/MapServer" + token);
+                    map.addLayer(tiledLayer);
+                    var dynamicMapServiceLayer = new ArcGISDynamicMapServiceLayer("http://services2.geodataonline.no/arcgis/rest/services/Geomap_UTM33_EUREF89/GeomapEiendom/MapServer" + token);
+                    map.addLayer(dynamicMapServiceLayer);
+                    var featureLayer = new FeatureLayer("http://services2.geodataonline.no/arcgis/rest/services/Geomap_UTM33_EUREF89/GeomapEiendom/MapServer/2" + token, {
+                        mode: FeatureLayer.MODE_ONDEMAND,
+                        outFields: ["*"],
+                        infoTemplate: new PopupTemplate({
+                            title: "Eiendom {MATRIKKELKOMMUNE}/{GNR}/{BNR}/{FNR}",
+                            fieldInfos: [
+                              { fieldName: "MATRIKKELKOMMUNE", label: "KNR", visible: true, format: { places: 0, digitSeparator: false } },
+                              { fieldName: "GNR", visible: true, format: { places: 0, digitSeparator: false } },
+                              { fieldName: "BNR", visible: true, format: { places: 0, digitSeparator: false } },
+                              { fieldName: "FNR", visible: true, format: { places: 0, digitSeparator: false } }
+                            ]
+                        })
+                    });
+                    map.addLayer(featureLayer);
+
+                    var resourceInfo = {
+                        extent: new Extent(-637106, 3604111, 1216948, 9139176, { wkid: 25833 }),
+                        layerInfos: [
+                          new WMSLayerInfo({ name: "Regional_plan", title: "Regional plan" }),
+                          new WMSLayerInfo({ name: "Kommune-_og_kommunedelplan", title: "Kommune- og kommunedelplan" }),
+                          new WMSLayerInfo({ name: "Eldre_reguleringsplan", title: "Eldre reguleringsplan" }),
+                          new WMSLayerInfo({ name: "Bebyggelsesplan", title: "Bebyggelsesplan" }),
+                          new WMSLayerInfo({ name: "Omraderegulering", title: "Områderegulering" }),
+                          new WMSLayerInfo({ name: "Detaljregulering", title: "Detaljregulering" })
+                        ]
+                    };
+                    var wmsLayer = new WMSLayer("http://wms.geonorge.no/skwms1/wms.planomraade?", {
+                        resourceInfo: resourceInfo,
+                        visibleLayers: array.map(resourceInfo.layerInfos, function (layerInfo) { return layerInfo.name; })
+                    });
+                    map.addLayer(wmsLayer);
+
+                    //initLegend(map, null);
+                    setupIdentify(map);
+                }
+
+                function setupIdentify(map) {
+                    on(map, "click", function (evt) {
+                        // Eksempel-kall:
+                        // http://wms.geonorge.no/skwms1/wms.planomraade?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&width=100&height=100&bbox=265000%2C6950000%2C266000%2C6951000&LAYERS=Kommune-_og_kommunedelplan&QUERY_LAYERS=Kommune-_og_kommunedelplan&STYLES=&FEATURE_COUNT=5&INFO_FORMAT=text%2Fhtml&CRS=EPSG%3A32633&X=50&Y=50
+
+                        // Definer en bounding box på 20x20 meter sentrert rundt klikk-koordinatet:
+                        var bbox = (Math.round(evt.mapPoint.x) - 10) + "," + (Math.round(evt.mapPoint.y) - 10) + "," + (Math.round(evt.mapPoint.x) + 10) + "," + (Math.round(evt.mapPoint.y) + 10);
+                        var layers = "Regional_plan,Kommune-_og_kommunedelplan,Eldre_reguleringsplan,Bebyggelsesplan,Omraderegulering,Detaljregulering";
+                        var url = "http://wms.geonorge.no/skwms1/wms.planomraade?" + ioQuery.objectToQuery({
+                            "SERVICE": "WMS",
+                            "VERSION": "1.3.0",
+                            "REQUEST": "GetFeatureInfo",
+                            "WIDTH": 100,
+                            "HEIGHT": 100,
+                            "X": 50,
+                            "Y": 50,
+                            "FEATURE_COUNT": 5,
+                            "INFO_FORMAT": "text/html",
+                            "LAYERS": layers,
+                            "QUERY_LAYERS": layers,
+                            "CRS": "EPSG:" + 25833,
+                            "BBOX": bbox
+                        });
+                        //url = esriConfig.defaults.io.proxyUrl + "?" + url;
+                        //url = "proxy.ashx?" + url;
+                        xhr(url, {
+                            method: "GET",
+                            handleAs: "text"
+                        }).then(function (htmlResults) {
+                            var features = [];
+                            var template = new InfoTemplate({
+                                title: "Planområde",
+                                content: ""
+                            });
+                            // Lag en feature for hvert html-dokument returnert fra tjenesten:
+                            var htmlDocs = htmlResults.split("</html>");
+                            array.forEach(htmlDocs, function (htmlDoc) {
+                                var doc = lang.trim(htmlDoc);
+                                if (doc == "") return;
+                                doc += "</html>";
+                                var feature = new Graphic(evt.MapPoint);
+                                feature.setInfoTemplate(new InfoTemplate("Planområde", doc));
+                                features.push(feature);
+                            }, this);
+                            var popup = map.infoWindow;
+                            popup.clearFeatures();
+                            if (features.length > 0) {
+                                popup.setFeatures(features);
+                                popup.resize(500, 400);
+                                popup.show(evt.mapPoint);
+                            }
+                        }, function (err) {
+                            console.warn("Error performing GetFeatureInfo: " + err);
+                        });
+                    }); // map on click
+                }
+            });
+
+        });
+    </script>
+  </head>
+
+  <body class="claro">
+    <div id="mainWindow" data-dojo-type="dijit/layout/BorderContainer" data-dojo-props="design:'headline'" style="width:100%; height:100%;">
+      <div id="header" class="shadow roundedCorners" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'top'">
+        <div id="title"></div>
+        <div id="subtitle"></div>
+      </div>
+      <div id="map" class="roundedCorners shadow" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'center'"></div>
+      <div id="rightPane" class="roundedCorners shadow" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'right'" >
+        <div id="legend"></div>
+      </div>
+    </div>
+  </body>
+</html>
